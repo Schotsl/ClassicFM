@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Fiber, Layer, Ref } from "effect";
+import { Cause, Context, Duration, Effect, Fiber, Layer, Ref } from "effect";
 import { BufferHealth, BufferService } from "./BufferService";
 import { PlaybackService } from "./PlaybackService";
 import { SchedulerService } from "./SchedulerService";
@@ -133,8 +133,11 @@ export const HealthServiceLive = Layer.effect(
                       status: h.status === "unhealthy" ? 503 : 200,
                     })
                 ),
-                Effect.catchAll((e) =>
-                  captureException(e, {
+                Effect.catchAllCause((cause) => {
+                  const error = Cause.squash(cause);
+                  const message =
+                    error instanceof Error ? error.message : Cause.pretty(cause);
+                  return captureException(error, {
                     tags: { component: "health", event: "handler_error" },
                   }).pipe(
                     Effect.zipRight(
@@ -143,7 +146,7 @@ export const HealthServiceLive = Layer.effect(
                           JSON.stringify(
                             {
                               status: "unhealthy",
-                              error: e instanceof Error ? e.message : String(e),
+                              error: message,
                             },
                             null,
                             2
@@ -155,8 +158,8 @@ export const HealthServiceLive = Layer.effect(
                         )
                       )
                     )
-                  )
-                )
+                  );
+                })
               )
             );
           },

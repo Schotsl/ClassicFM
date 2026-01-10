@@ -16,6 +16,7 @@ import { addBreadcrumb, captureException, captureMessage } from "../utils/sentry
 
 type PlaybackState = "stopped" | "buffering" | "playing" | "paused";
 type PlaybackRunResult = "stopped" | "restart";
+type PlayerProcess = Subprocess<"pipe", "ignore", "ignore">;
 
 export class PlaybackService extends Context.Tag("PlaybackService")<
   PlaybackService,
@@ -43,7 +44,7 @@ export const PlaybackServiceLive = Layer.effect(
     const playbackFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(
       null
     );
-    const playerRef = yield* Ref.make<Subprocess | null>(null);
+    const playerRef = yield* Ref.make<PlayerProcess | null>(null);
 
     // Continuously fill buffer from stream
     const bufferLoop = Effect.gen(function* () {
@@ -109,7 +110,7 @@ export const PlaybackServiceLive = Layer.effect(
       yield* Effect.log("Buffer ready");
 
       const bytesPerChunk = Math.floor((bitrateKBps * 1024) / 10); // 100ms chunks
-      const writeChunk = (player: Subprocess, chunk: Uint8Array) =>
+      const writeChunk = (player: PlayerProcess, chunk: Uint8Array) =>
         Effect.gen(function* () {
           if (!player.stdin) {
             return yield* Effect.fail(new Error("Player stdin unavailable"));
@@ -124,7 +125,7 @@ export const PlaybackServiceLive = Layer.effect(
           });
         });
 
-      const runLoop = (player: Subprocess) =>
+      const runLoop = (player: PlayerProcess) =>
         Effect.gen(function* () {
           while (true) {
             const state = yield* Ref.get(stateRef);

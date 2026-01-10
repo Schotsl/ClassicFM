@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/bun";
+import type { Scope } from "@sentry/bun";
 import { Effect } from "effect";
 
 export type SentryLevel = Exclude<
@@ -11,12 +12,6 @@ export type SentryContext = {
   extra?: Record<string, unknown>;
   contexts?: Record<string, Record<string, unknown>>;
 };
-
-type SentryScope = Parameters<typeof Sentry.withScope>[0] extends (
-  scope: infer Scope
-) => void
-  ? Scope
-  : never;
 
 let initialized = false;
 
@@ -33,7 +28,7 @@ export const initSentryOnce = () => {
   Sentry.setTag("runtime", "bun");
 };
 
-const applyContext = (scope: SentryScope, context?: SentryContext) => {
+const applyContext = (scope: Scope, context?: SentryContext) => {
   if (!context) return;
   if (context.tags) {
     for (const [key, value] of Object.entries(context.tags)) {
