@@ -23,15 +23,13 @@ export const HealthServiceLive = Layer.effect(
     const port = yield* AppConfig.HealthPort;
 
     const thresholdRef = yield* Ref.make({ armed: false });
-    const serverRef = yield* Ref.make<ReturnType<typeof Bun.serve> | null>(
-      null
-    );
+    const serverRef = yield* Ref.make<ReturnType<typeof Bun.serve> | null>(null);
     const monitorRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
 
     const updateThresholds = Effect.fn("health.updateThresholds")(function* (
       health: BufferHealth,
       state: string,
-      nextRebuild: Date
+      nextRebuild: Date,
     ) {
       const action = yield* Ref.modify(thresholdRef, (threshold) => {
         if (health.percentage >= 80) {
@@ -64,20 +62,17 @@ export const HealthServiceLive = Layer.effect(
           level: "error",
           data: { percentage: health.percentage },
         });
-        yield* captureException(
-          new Error("Buffer health dropped below 20% after being healthy"),
-          {
-            tags: { component: "health", event: "buffer_threshold" },
-            extra: {
-              percentage: health.percentage,
-              currentSize: health.currentSize,
-              targetSize: health.targetSize,
-              durationMinutes: health.durationMinutes,
-              playbackState: state,
-              nextRebuild: nextRebuild.toISOString(),
-            },
-          }
-        );
+        yield* captureException(new Error("Buffer health dropped below 20% after being healthy"), {
+          tags: { component: "health", event: "buffer_threshold" },
+          extra: {
+            percentage: health.percentage,
+            currentSize: health.currentSize,
+            targetSize: health.targetSize,
+            durationMinutes: health.durationMinutes,
+            playbackState: state,
+            nextRebuild: nextRebuild.toISOString(),
+          },
+        });
       }
     });
 
@@ -89,11 +84,7 @@ export const HealthServiceLive = Layer.effect(
       yield* updateThresholds(health, state, nextRebuild);
 
       return {
-        status: health.isHealthy
-          ? "healthy"
-          : health.percentage >= 30
-          ? "degraded"
-          : "unhealthy",
+        status: health.isHealthy ? "healthy" : health.percentage >= 30 ? "degraded" : "unhealthy",
         buffer: {
           sizeMB: Math.round((health.currentSize / 1024 / 1024) * 100) / 100,
           targetMB: Math.round((health.targetSize / 1024 / 1024) * 100) / 100,
@@ -131,12 +122,11 @@ export const HealthServiceLive = Layer.effect(
                     new Response(JSON.stringify(h, null, 2), {
                       headers: { "Content-Type": "application/json" },
                       status: h.status === "unhealthy" ? 503 : 200,
-                    })
+                    }),
                 ),
                 Effect.catchAllCause((cause) => {
                   const error = Cause.squash(cause);
-                  const message =
-                    error instanceof Error ? error.message : Cause.pretty(cause);
+                  const message = error instanceof Error ? error.message : Cause.pretty(cause);
                   return captureException(error, {
                     tags: { component: "health", event: "handler_error" },
                   }).pipe(
@@ -149,18 +139,18 @@ export const HealthServiceLive = Layer.effect(
                               error: message,
                             },
                             null,
-                            2
+                            2,
                           ),
                           {
                             headers: { "Content-Type": "application/json" },
                             status: 503,
-                          }
-                        )
-                      )
-                    )
+                          },
+                        ),
+                      ),
+                    ),
                   );
-                })
-              )
+                }),
+              ),
             );
           },
         });
@@ -191,5 +181,5 @@ export const HealthServiceLive = Layer.effect(
       });
 
     return { start, stop };
-  })
+  }),
 );

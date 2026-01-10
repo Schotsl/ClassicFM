@@ -34,9 +34,7 @@ export const BufferServiceLive = Layer.effect(
     // Calculate the target size of the buffer in bytes based on config duration and bitrate
     const bufferDuration = yield* AppConfig.BufferDuration;
     const bitrateKBps = yield* AppConfig.BitrateKBps;
-    const targetSize = Math.floor(
-      Duration.toSeconds(bufferDuration) * bitrateKBps * 1024
-    );
+    const targetSize = Math.floor(Duration.toSeconds(bufferDuration) * bitrateKBps * 1024);
 
     const stateRef = yield* Ref.make<BufferState>({
       chunks: [],
@@ -53,7 +51,8 @@ export const BufferServiceLive = Layer.effect(
 
     const append = (chunk: Uint8Array) =>
       Ref.update(stateRef, (state) => {
-        let { chunks, totalSize, headIndex } = state;
+        const { chunks } = state;
+        let { totalSize, headIndex } = state;
         chunks.push(chunk);
         totalSize += chunk.length;
 
@@ -81,7 +80,8 @@ export const BufferServiceLive = Layer.effect(
 
     const consume = (bytes: number): Effect.Effect<Uint8Array | null> =>
       Ref.modify(stateRef, (state) => {
-        let { chunks, totalSize, headIndex } = state;
+        const { chunks } = state;
+        let { totalSize, headIndex } = state;
         if (headIndex >= chunks.length || totalSize === 0) {
           return [null, state];
         }
@@ -143,11 +143,9 @@ export const BufferServiceLive = Layer.effect(
         };
       });
 
-    const clear = () =>
-      Ref.set(stateRef, { chunks: [], totalSize: 0, headIndex: 0 });
+    const clear = () => Ref.set(stateRef, { chunks: [], totalSize: 0, headIndex: 0 });
 
-    const size = () =>
-      Ref.get(stateRef).pipe(Effect.map((state) => state.totalSize));
+    const size = () => Ref.get(stateRef).pipe(Effect.map((state) => state.totalSize));
 
     const waitForSize = (size: number) =>
       Effect.gen(function* () {
@@ -162,13 +160,10 @@ export const BufferServiceLive = Layer.effect(
     const waitForTarget = () => waitForSize(targetSize);
 
     const waitForMinutes = (minutes: number) => {
-      const size = Math.min(
-        targetSize,
-        Math.floor(minutes * 60 * bitrateKBps * 1024)
-      );
+      const size = Math.min(targetSize, Math.floor(minutes * 60 * bitrateKBps * 1024));
       return waitForSize(size);
     };
 
     return { append, consume, getHealth, clear, size, waitForTarget, waitForMinutes };
-  })
+  }),
 );

@@ -2,10 +2,7 @@ import * as Sentry from "@sentry/bun";
 import type { Scope } from "@sentry/bun";
 import { Effect } from "effect";
 
-export type SentryLevel = Exclude<
-  Parameters<typeof Sentry.captureMessage>[1],
-  undefined
->;
+export type SentryLevel = Exclude<Parameters<typeof Sentry.captureMessage>[1], undefined>;
 
 export type SentryContext = {
   tags?: Record<string, string>;
@@ -45,10 +42,7 @@ const applyContext = (scope: Scope, context?: SentryContext) => {
   }
 };
 
-export const captureExceptionSync = (
-  error: unknown,
-  context?: SentryContext
-) => {
+export const captureExceptionSync = (error: unknown, context?: SentryContext) => {
   initSentryOnce();
   Sentry.withScope((scope) => {
     applyContext(scope, context);
@@ -59,7 +53,7 @@ export const captureExceptionSync = (
 export const captureMessageSync = (
   message: string,
   level: SentryLevel = "info",
-  context?: SentryContext
+  context?: SentryContext,
 ) => {
   initSentryOnce();
   Sentry.withScope((scope) => {
@@ -68,38 +62,37 @@ export const captureMessageSync = (
   });
 };
 
-export const initSentry = Effect.fn("sentry.init")(function* () {
-  initSentryOnce();
-});
+export const initSentry = Effect.fn("sentry.init")(() => Effect.sync(initSentryOnce));
 
-export const captureException = Effect.fn("sentry.captureException")(function* (
-  error: unknown,
-  context?: SentryContext
-) {
-  captureExceptionSync(error, context);
-});
+export const captureException = Effect.fn("sentry.captureException")(
+  (error: unknown, context?: SentryContext) =>
+    Effect.sync(() => {
+      captureExceptionSync(error, context);
+    }),
+);
 
-export const captureMessage = Effect.fn("sentry.captureMessage")(function* (
-  message: string,
-  level: SentryLevel = "info",
-  context?: SentryContext
-) {
-  captureMessageSync(message, level, context);
-});
+export const captureMessage = Effect.fn("sentry.captureMessage")(
+  (message: string, level: SentryLevel = "info", context?: SentryContext) =>
+    Effect.sync(() => {
+      captureMessageSync(message, level, context);
+    }),
+);
 
-export const addBreadcrumb = Effect.fn("sentry.addBreadcrumb")(function* (
-  breadcrumb: Parameters<typeof Sentry.addBreadcrumb>[0]
-) {
-  initSentryOnce();
-  Sentry.addBreadcrumb(breadcrumb);
-});
+export const addBreadcrumb = Effect.fn("sentry.addBreadcrumb")(
+  (breadcrumb: Parameters<typeof Sentry.addBreadcrumb>[0]) =>
+    Effect.sync(() => {
+      initSentryOnce();
+      Sentry.addBreadcrumb(breadcrumb);
+    }),
+);
 
-export const flushSentry = Effect.fn("sentry.flush")(function* (
-  timeoutMs = 2000
-) {
+export const flushSentry = Effect.fn("sentry.flush")(function* (timeoutMs = 2000) {
   initSentryOnce();
   yield* Effect.tryPromise({
     try: () => Sentry.flush(timeoutMs),
     catch: (e) => new Error(`Sentry flush failed: ${e}`),
-  }).pipe(Effect.asVoid, Effect.catchAll(() => Effect.void));
+  }).pipe(
+    Effect.asVoid,
+    Effect.catchAll(() => Effect.void),
+  );
 });

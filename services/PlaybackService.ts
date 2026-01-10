@@ -1,13 +1,4 @@
-import {
-  Context,
-  Effect,
-  Layer,
-  Ref,
-  Stream,
-  Schedule,
-  Duration,
-  Fiber,
-} from "effect";
+import { Context, Effect, Layer, Ref, Stream, Schedule, Duration, Fiber } from "effect";
 import { Subprocess } from "bun";
 import { BufferService } from "./BufferService";
 import { StreamService } from "./StreamService";
@@ -38,12 +29,8 @@ export const PlaybackServiceLive = Layer.effect(
     const initialBufferMinutes = yield* AppConfig.InitialBufferMinutes;
 
     const stateRef = yield* Ref.make<PlaybackState>("stopped");
-    const bufferFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(
-      null
-    );
-    const playbackFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(
-      null
-    );
+    const bufferFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
+    const playbackFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
     const playerRef = yield* Ref.make<PlayerProcess | null>(null);
 
     // Continuously fill buffer from stream
@@ -53,9 +40,7 @@ export const PlaybackServiceLive = Layer.effect(
       while (true) {
         const audioStream = yield* stream.connect().pipe(
           Effect.retry(
-            Schedule.exponential(Duration.seconds(1)).pipe(
-              Schedule.intersect(Schedule.recurs(5))
-            )
+            Schedule.exponential(Duration.seconds(1)).pipe(Schedule.intersect(Schedule.recurs(5))),
           ),
           Effect.catchAll((e) =>
             captureMessage("Stream connect failed", "warning", {
@@ -66,17 +51,15 @@ export const PlaybackServiceLive = Layer.effect(
             }).pipe(
               Effect.zipRight(Effect.logError(e)),
               Effect.zipRight(Effect.sleep(Duration.seconds(2))),
-              Effect.as(Stream.empty as Stream.Stream<Uint8Array, Error>)
-            )
-          )
+              Effect.as(Stream.empty as Stream.Stream<Uint8Array, Error>),
+            ),
+          ),
         );
 
         yield* Stream.runForEach(audioStream, (chunk) =>
           Ref.get(stateRef).pipe(
-            Effect.flatMap((s) =>
-              s === "stopped" ? Effect.void : buffer.append(chunk)
-            )
-          )
+            Effect.flatMap((s) => (s === "stopped" ? Effect.void : buffer.append(chunk))),
+          ),
         ).pipe(
           Effect.catchAll((e) =>
             captureMessage("Stream read failed", "warning", {
@@ -86,9 +69,9 @@ export const PlaybackServiceLive = Layer.effect(
               },
             }).pipe(
               Effect.zipRight(Effect.logError(e)),
-              Effect.zipRight(Effect.sleep(Duration.seconds(2)))
-            )
-          )
+              Effect.zipRight(Effect.sleep(Duration.seconds(2))),
+            ),
+          ),
         );
       }
     });
@@ -102,9 +85,7 @@ export const PlaybackServiceLive = Layer.effect(
         level: "info",
       });
       if (initialBufferMinutes > 0) {
-        yield* Effect.log(
-          `Waiting for initial buffer (${initialBufferMinutes} min)...`
-        );
+        yield* Effect.log(`Waiting for initial buffer (${initialBufferMinutes} min)...`);
       }
       yield* buffer.waitForMinutes(initialBufferMinutes);
       yield* Effect.log("Buffer ready");
@@ -133,9 +114,7 @@ export const PlaybackServiceLive = Layer.effect(
             if (state === "stopped") return "stopped" as PlaybackRunResult;
 
             if (player.exitCode !== null) {
-              yield* Effect.logError(
-                `Player exited with code ${player.exitCode}`
-              );
+              yield* Effect.logError(`Player exited with code ${player.exitCode}`);
               yield* captureMessage("Player exited", "error", {
                 tags: { component: "playback", event: "player_exit" },
                 extra: {
@@ -191,8 +170,8 @@ export const PlaybackServiceLive = Layer.effect(
                       bytesPerChunk,
                       state,
                     },
-                  }).pipe(Effect.zipRight(Effect.logError(e)), Effect.as(false))
-                )
+                  }).pipe(Effect.zipRight(Effect.logError(e)), Effect.as(false)),
+                ),
               );
               if (!wrote) return "restart" as PlaybackRunResult;
             }
@@ -228,20 +207,15 @@ export const PlaybackServiceLive = Layer.effect(
           Effect.flatMap((player) =>
             runLoop(player).pipe(
               Effect.ensuring(
-                Effect.sync(() => player.kill()).pipe(
-                  Effect.zipRight(Ref.set(playerRef, null))
-                )
-              )
-            )
+                Effect.sync(() => player.kill()).pipe(Effect.zipRight(Ref.set(playerRef, null))),
+              ),
+            ),
           ),
           Effect.catchAll((e) =>
             captureException(e, {
               tags: { component: "playback", event: "spawn" },
-            }).pipe(
-              Effect.zipRight(Effect.logError(e)),
-              Effect.as("restart" as PlaybackRunResult)
-            )
-          )
+            }).pipe(Effect.zipRight(Effect.logError(e)), Effect.as("restart" as PlaybackRunResult)),
+          ),
         );
 
         if (runResult === "stopped") break;
@@ -284,22 +258,18 @@ export const PlaybackServiceLive = Layer.effect(
       Ref.get(stateRef).pipe(
         Effect.flatMap((s) =>
           s === "playing" || s === "buffering"
-            ? Ref.set(stateRef, "paused").pipe(
-                Effect.tap(() => Effect.log("Paused"))
-              )
-            : Effect.void
-        )
+            ? Ref.set(stateRef, "paused").pipe(Effect.tap(() => Effect.log("Paused")))
+            : Effect.void,
+        ),
       );
 
     const resume = () =>
       Ref.get(stateRef).pipe(
         Effect.flatMap((s) =>
           s === "paused"
-            ? Ref.set(stateRef, "buffering").pipe(
-                Effect.tap(() => Effect.log("Resumed"))
-              )
-            : Effect.void
-        )
+            ? Ref.set(stateRef, "buffering").pipe(Effect.tap(() => Effect.log("Resumed")))
+            : Effect.void,
+        ),
       );
 
     const stop = () =>
@@ -332,5 +302,5 @@ export const PlaybackServiceLive = Layer.effect(
     const getState = () => Ref.get(stateRef);
 
     return { start, pause, resume, stop, getState };
-  })
+  }),
 );

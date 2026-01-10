@@ -36,11 +36,11 @@ curl http://localhost:3002/health
 
 ## Config (env vars)
 
-`STREAM_URL` lives in `.env`. Use `.env.local` to override it locally.
+Copy `.env.example` to `.env` and set `STREAM_URL`.
 
 | Variable                 | Default | Description                           |
 | ------------------------ | ------- | ------------------------------------- |
-| `STREAM_URL`             | .env    | MP3 stream URL                        |
+| `STREAM_URL`             | —       | MP3 stream URL                        |
 | `BUFFER_DURATION`        | 1 hour  | Buffer size                           |
 | `INITIAL_BUFFER_MINUTES` | 1       | Initial buffer before playback starts |
 | `HEALTH_PORT`            | 3002    | Health endpoint port                  |

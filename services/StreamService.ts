@@ -4,10 +4,7 @@ import { AppConfig } from "../config";
 export class StreamService extends Context.Tag("StreamService")<
   StreamService,
   {
-    readonly connect: () => Effect.Effect<
-      Stream.Stream<Uint8Array, Error>,
-      Error
-    >;
+    readonly connect: () => Effect.Effect<Stream.Stream<Uint8Array, Error>, Error>;
   }
 >() {}
 
@@ -17,10 +14,7 @@ export const StreamServiceLive = Layer.effect(
     const streamUrl = yield* AppConfig.StreamUrl;
     const streamTimeoutMs = 15000;
 
-    const connect = (): Effect.Effect<
-      Stream.Stream<Uint8Array, Error>,
-      Error
-    > =>
+    const connect = (): Effect.Effect<Stream.Stream<Uint8Array, Error>, Error> =>
       Effect.gen(function* () {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), streamTimeoutMs);
@@ -37,9 +31,7 @@ export const StreamServiceLive = Layer.effect(
 
         if (!response.ok || !response.body) {
           controller.abort();
-          return yield* Effect.fail(
-            new Error(`Stream error: ${response.status}`)
-          );
+          return yield* Effect.fail(new Error(`Stream error: ${response.status}`));
         }
 
         const reader = response.body.getReader();
@@ -62,12 +54,12 @@ export const StreamServiceLive = Layer.effect(
             Effect.map((result) =>
               result.done
                 ? Option.none<readonly [Uint8Array, typeof r]>()
-                : Option.some([result.value, r] as const)
-            )
-          )
+                : Option.some([result.value, r] as const),
+            ),
+          ),
         ).pipe(Stream.ensuring(cleanup));
       });
 
     return { connect };
-  })
+  }),
 );

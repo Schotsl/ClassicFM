@@ -3,12 +3,7 @@ import { MainLayer } from "./layers/MainLayer";
 import { PlaybackService } from "./services/PlaybackService";
 import { SchedulerService } from "./services/SchedulerService";
 import { HealthService } from "./services/HealthService";
-import {
-  captureExceptionSync,
-  flushSentry,
-  initSentry,
-  initSentryOnce,
-} from "./utils/sentry";
+import { captureExceptionSync, flushSentry, initSentry, initSentryOnce } from "./utils/sentry";
 
 initSentryOnce();
 
@@ -42,12 +37,10 @@ const shutdown = Effect.gen(function* () {
 });
 
 const runtime = ManagedRuntime.make(MainLayer);
-const programWithLogs = program.pipe(
-  Effect.provide(Logger.minimumLogLevel(LogLevel.Info))
-);
+const programWithLogs = program.pipe(Effect.provide(Logger.minimumLogLevel(LogLevel.Info)));
 const shutdownWithLogs = shutdown.pipe(
   Effect.provide(Logger.minimumLogLevel(LogLevel.Info)),
-  Effect.catchAll(() => Effect.void)
+  Effect.catchAll(() => Effect.void),
 );
 
 let shuttingDown = false;

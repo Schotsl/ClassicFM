@@ -51,12 +51,11 @@ export const SchedulerServiceLive = Layer.effect(
     const stop = () =>
       Ref.get(fiberRef).pipe(
         Effect.flatMap((f) => (f ? Fiber.interrupt(f) : Effect.void)),
-        Effect.tap(() => Ref.set(fiberRef, null))
+        Effect.tap(() => Ref.set(fiberRef, null)),
       );
 
-    const getNextRebuildTime = () =>
-      nextHourInfo(rebuildHour).pipe(Effect.map((info) => info.at));
+    const getNextRebuildTime = () => nextHourInfo(rebuildHour).pipe(Effect.map((info) => info.at));
 
     return { start, stop, getNextRebuildTime };
-  })
+  }),
 );
