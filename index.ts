@@ -44,30 +44,32 @@ const shutdownWithLogs = shutdown.pipe(
 );
 
 let shuttingDown = false;
-const handleShutdown = () => {
+let shutdownExitCode = 0;
+const handleShutdown = (exitCode = 0) => {
+  shutdownExitCode = Math.max(shutdownExitCode, exitCode);
   if (shuttingDown) return;
   shuttingDown = true;
 
   runtime
     .runPromise(shutdownWithLogs)
-    .finally(() => runtime.dispose().finally(() => process.exit(0)));
+    .finally(() => runtime.dispose().finally(() => process.exit(shutdownExitCode)));
 };
 
-process.on("SIGINT", handleShutdown);
-process.on("SIGTERM", handleShutdown);
-process.on("uncaughtException", (err) => {
-  captureExceptionSync(err, {
-    tags: { component: "process", event: "uncaughtException" },
-  });
-});
-process.on("unhandledRejection", (reason) => {
-  captureExceptionSync(reason, {
-    tags: { component: "process", event: "unhandledRejection" },
-  });
-});
+const exitWithError = (error: unknown, tags: { component: string; event: string }) => {
+  captureExceptionSync(error, { tags });
+  process.exit(1);
+};
+
+const handleFatal = (error: unknown, event: "uncaughtException" | "unhandledRejection") => {
+  exitWithError(error, { component: "process", event });
+};
+
+process.on("SIGINT", () => handleShutdown(0));
+process.on("SIGTERM", () => handleShutdown(0));
+process.on("uncaughtException", (err) => handleFatal(err, "uncaughtException"));
+process.on("unhandledRejection", (reason) => handleFatal(reason, "unhandledRejection"));
 
 runtime.runPromise(programWithLogs).catch((e) => {
   console.error("Fatal:", e);
-  captureExceptionSync(e, { tags: { component: "runtime", event: "fatal" } });
-  runtime.dispose().finally(() => process.exit(1));
+  exitWithError(e, { component: "runtime", event: "fatal" });
 });

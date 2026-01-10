@@ -41,6 +41,7 @@ export const BufferServiceLive = Layer.effect(
       totalSize: 0,
       headIndex: 0,
     });
+    const emptyChunk = new Uint8Array(0);
 
     const compactState = (chunks: Uint8Array[], headIndex: number) => {
       if (headIndex > 1024 && headIndex > chunks.length / 2) {
@@ -60,6 +61,7 @@ export const BufferServiceLive = Layer.effect(
         if (totalSize > targetSize) {
           while (totalSize > targetSize && headIndex < chunks.length - 1) {
             totalSize -= chunks[headIndex]!.length;
+            chunks[headIndex] = emptyChunk;
             headIndex += 1;
           }
 
@@ -97,6 +99,7 @@ export const BufferServiceLive = Layer.effect(
             collected.push(first);
             total += first.length;
             remaining -= first.length;
+            chunks[headIndex] = emptyChunk;
             headIndex += 1;
           } else {
             const head = first.slice(0, remaining);

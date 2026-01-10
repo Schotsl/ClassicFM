@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Stream, Option } from "effect";
+import { Context, Effect, Layer, Stream, Option, Duration } from "effect";
 import { AppConfig } from "../config";
 
 export class StreamService extends Context.Tag("StreamService")<
@@ -12,12 +12,13 @@ export const StreamServiceLive = Layer.effect(
   StreamService,
   Effect.gen(function* () {
     const streamUrl = yield* AppConfig.StreamUrl;
-    const streamTimeoutMs = 15000;
+    const streamConnectTimeoutMs = 15000;
+    const streamReadTimeout = Duration.seconds(15);
 
     const connect = (): Effect.Effect<Stream.Stream<Uint8Array, Error>, Error> =>
       Effect.gen(function* () {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), streamTimeoutMs);
+        const timeout = setTimeout(() => controller.abort(), streamConnectTimeoutMs);
         const response = yield* Effect.tryPromise({
           try: async () => {
             try {
@@ -57,7 +58,10 @@ export const StreamServiceLive = Layer.effect(
                 : Option.some([result.value, r] as const),
             ),
           ),
-        ).pipe(Stream.ensuring(cleanup));
+        ).pipe(
+          Stream.timeoutFail(() => new Error("Stream read timed out"), streamReadTimeout),
+          Stream.ensuring(cleanup),
+        );
       });
 
     return { connect };
