@@ -10,8 +10,6 @@ export const nextHourInfo = Effect.fn("nextHourInfo")((hour: number) =>
     if (target <= now) target.setDate(target.getDate() + 1);
 
     const ms = target.getTime() - now.getTime();
-    const at = new Date(Date.now() + ms);
-
-    return { ms, at };
+    return { ms, at: target };
   }),
 );

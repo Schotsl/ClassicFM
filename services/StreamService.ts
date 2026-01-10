@@ -38,7 +38,6 @@ export const StreamServiceLive = Layer.effect(
         const reader = response.body.getReader();
         const cleanup = Effect.sync(() => {
           controller.abort();
-          clearTimeout(timeout);
           void reader.cancel().catch(() => {});
           try {
             reader.releaseLock();
