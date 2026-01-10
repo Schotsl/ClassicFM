@@ -22,7 +22,10 @@ export const StreamServiceLive = Layer.effect(
         const response = yield* Effect.tryPromise({
           try: async () => {
             try {
-              return await fetch(streamUrl, { signal: controller.signal });
+              return await fetch(streamUrl, {
+                signal: controller.signal,
+                headers: { "User-Agent": "LibVLC/3.0.18" },
+              });
             } finally {
               clearTimeout(timeout);
             }
