@@ -17,7 +17,7 @@ bun start
 ## Health Endpoint
 
 ```bash
-curl http://localhost:3002/health
+curl http://localhost/
 ```
 
 ```json
