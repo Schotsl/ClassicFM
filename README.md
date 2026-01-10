@@ -43,7 +43,7 @@ Copy `.env.example` to `.env` and set `STREAM_URL`.
 | `STREAM_URL`             | —       | MP3 stream URL                        |
 | `BUFFER_DURATION`        | 1 hour  | Buffer size                           |
 | `INITIAL_BUFFER_MINUTES` | 1       | Initial buffer before playback starts |
-| `HEALTH_PORT`            | 80      | Health endpoint port                  |
+| `HEALTH_PORT`            | 3000    | Health endpoint port                  |
 | `REBUILD_HOUR`           | 4       | Hour to rebuild buffer (0-23)         |
 | `BITRATE_KBPS`           | 24      | Expected bitrate in KB/s              |
 
