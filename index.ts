@@ -3,8 +3,17 @@ import { MainLayer } from "./layers/MainLayer";
 import { PlaybackService } from "./services/PlaybackService";
 import { SchedulerService } from "./services/SchedulerService";
 import { HealthService } from "./services/HealthService";
+import {
+  captureExceptionSync,
+  flushSentry,
+  initSentry,
+  initSentryOnce,
+} from "./utils/sentry";
+
+initSentryOnce();
 
 const program = Effect.gen(function* () {
+  yield* initSentry();
   yield* Console.log("🎵 Classic FM Buffer Player");
 
   const health = yield* HealthService;
@@ -29,6 +38,7 @@ const shutdown = Effect.gen(function* () {
   yield* playback.stop();
   yield* scheduler.stop();
   yield* health.stop();
+  yield* flushSentry();
 });
 
 const runtime = ManagedRuntime.make(MainLayer);
@@ -52,8 +62,19 @@ const handleShutdown = () => {
 
 process.on("SIGINT", handleShutdown);
 process.on("SIGTERM", handleShutdown);
+process.on("uncaughtException", (err) => {
+  captureExceptionSync(err, {
+    tags: { component: "process", event: "uncaughtException" },
+  });
+});
+process.on("unhandledRejection", (reason) => {
+  captureExceptionSync(reason, {
+    tags: { component: "process", event: "unhandledRejection" },
+  });
+});
 
 runtime.runPromise(programWithLogs).catch((e) => {
   console.error("Fatal:", e);
+  captureExceptionSync(e, { tags: { component: "runtime", event: "fatal" } });
   runtime.dispose().finally(() => process.exit(1));
 });

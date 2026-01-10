@@ -12,6 +12,7 @@ import { Subprocess } from "bun";
 import { BufferService } from "./BufferService";
 import { StreamService } from "./StreamService";
 import { AppConfig } from "../config";
+import { addBreadcrumb, captureException, captureMessage } from "../utils/sentry";
 
 type PlaybackState = "stopped" | "buffering" | "playing" | "paused";
 type PlaybackRunResult = "stopped" | "restart";
@@ -56,7 +57,13 @@ export const PlaybackServiceLive = Layer.effect(
             )
           ),
           Effect.catchAll((e) =>
-            Effect.logError(e).pipe(
+            captureMessage("Stream connect failed", "warning", {
+              tags: { component: "stream", event: "connect" },
+              extra: {
+                error: e instanceof Error ? e.message : String(e),
+              },
+            }).pipe(
+              Effect.zipRight(Effect.logError(e)),
               Effect.zipRight(Effect.sleep(Duration.seconds(2))),
               Effect.as(Stream.empty as Stream.Stream<Uint8Array, Error>)
             )
@@ -71,7 +78,13 @@ export const PlaybackServiceLive = Layer.effect(
           )
         ).pipe(
           Effect.catchAll((e) =>
-            Effect.logError(e).pipe(
+            captureMessage("Stream read failed", "warning", {
+              tags: { component: "stream", event: "read" },
+              extra: {
+                error: e instanceof Error ? e.message : String(e),
+              },
+            }).pipe(
+              Effect.zipRight(Effect.logError(e)),
               Effect.zipRight(Effect.sleep(Duration.seconds(2)))
             )
           )
@@ -82,6 +95,11 @@ export const PlaybackServiceLive = Layer.effect(
     // Play audio via ffplay
     const playbackLoop = Effect.gen(function* () {
       yield* Effect.log("Starting audio playback");
+      yield* addBreadcrumb({
+        category: "playback",
+        message: "Playback loop starting",
+        level: "info",
+      });
       if (initialBufferMinutes > 0) {
         yield* Effect.log(
           `Waiting for initial buffer (${initialBufferMinutes} min)...`
@@ -117,6 +135,14 @@ export const PlaybackServiceLive = Layer.effect(
               yield* Effect.logError(
                 `Player exited with code ${player.exitCode}`
               );
+              yield* captureMessage("Player exited", "error", {
+                tags: { component: "playback", event: "player_exit" },
+                extra: {
+                  exitCode: player.exitCode,
+                  pid: player.pid,
+                  state,
+                },
+              });
               return "restart" as PlaybackRunResult;
             }
 
@@ -131,6 +157,12 @@ export const PlaybackServiceLive = Layer.effect(
               if (state === "playing") {
                 yield* Ref.set(stateRef, "buffering");
                 yield* Effect.log("Buffer low, waiting...");
+                yield* addBreadcrumb({
+                  category: "buffer",
+                  message: "Buffer low during playback",
+                  level: "warning",
+                  data: { bufSize, bytesPerChunk },
+                });
               }
               yield* Effect.sleep(Duration.millis(500));
               continue;
@@ -139,6 +171,11 @@ export const PlaybackServiceLive = Layer.effect(
             if (state === "buffering") {
               yield* Ref.set(stateRef, "playing");
               yield* Effect.log("Resuming playback");
+              yield* addBreadcrumb({
+                category: "playback",
+                message: "Playback resumed",
+                level: "info",
+              });
             }
 
             const chunk = yield* buffer.consume(bytesPerChunk);
@@ -146,7 +183,14 @@ export const PlaybackServiceLive = Layer.effect(
               const wrote = yield* writeChunk(player, chunk).pipe(
                 Effect.as(true),
                 Effect.catchAll((e) =>
-                  Effect.logError(e).pipe(Effect.as(false))
+                  captureException(e, {
+                    tags: { component: "playback", event: "write" },
+                    extra: {
+                      bufferSize: bufSize,
+                      bytesPerChunk,
+                      state,
+                    },
+                  }).pipe(Effect.zipRight(Effect.logError(e)), Effect.as(false))
                 )
               );
               if (!wrote) return "restart" as PlaybackRunResult;
@@ -161,7 +205,13 @@ export const PlaybackServiceLive = Layer.effect(
         const state = yield* Ref.get(stateRef);
         if (state === "stopped") break;
 
-        yield* Effect.log(firstStart ? "Starting player" : "Restarting player");
+        const isFirstStart = firstStart;
+        yield* Effect.log(isFirstStart ? "Starting player" : "Restarting player");
+        yield* addBreadcrumb({
+          category: "playback",
+          message: isFirstStart ? "Player starting" : "Player restarting",
+          level: isFirstStart ? "info" : "warning",
+        });
         firstStart = false;
 
         const runResult = yield* Effect.try({
@@ -184,7 +234,12 @@ export const PlaybackServiceLive = Layer.effect(
             )
           ),
           Effect.catchAll((e) =>
-            Effect.logError(e).pipe(Effect.as("restart" as PlaybackRunResult))
+            captureException(e, {
+              tags: { component: "playback", event: "spawn" },
+            }).pipe(
+              Effect.zipRight(Effect.logError(e)),
+              Effect.as("restart" as PlaybackRunResult)
+            )
           )
         );
 
@@ -196,6 +251,11 @@ export const PlaybackServiceLive = Layer.effect(
           yield* Ref.set(stateRef, "buffering");
         }
 
+        yield* addBreadcrumb({
+          category: "playback",
+          message: "Player restart scheduled",
+          level: "warning",
+        });
         yield* Effect.sleep(Duration.seconds(1));
       }
     });
@@ -206,6 +266,11 @@ export const PlaybackServiceLive = Layer.effect(
 
         yield* Ref.set(stateRef, "buffering");
         yield* Effect.log("Starting playback service");
+        yield* addBreadcrumb({
+          category: "playback",
+          message: "Playback service started",
+          level: "info",
+        });
 
         const fiber = yield* Effect.fork(bufferLoop);
         yield* Ref.set(bufferFiberRef, fiber);
@@ -256,6 +321,11 @@ export const PlaybackServiceLive = Layer.effect(
         if (player) player.kill();
 
         yield* Effect.log("Stopped");
+        yield* addBreadcrumb({
+          category: "playback",
+          message: "Playback service stopped",
+          level: "info",
+        });
       });
 
     const getState = () => Ref.get(stateRef);
