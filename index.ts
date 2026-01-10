@@ -3,9 +3,7 @@ import { MainLayer } from "./layers/MainLayer";
 import { PlaybackService } from "./services/PlaybackService";
 import { SchedulerService } from "./services/SchedulerService";
 import { HealthService } from "./services/HealthService";
-import { captureExceptionSync, flushSentry, initSentry, initSentryOnce } from "./utils/sentry";
-
-initSentryOnce();
+import { captureExceptionSync, flushSentry, initSentry } from "./utils/sentry";
 
 const program = Effect.gen(function* () {
   yield* initSentry();
