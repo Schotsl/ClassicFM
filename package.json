@@ -5,6 +5,10 @@
   "description": "Classic FM streaming player with 1-hour buffer using Effect",
   "scripts": {
     "dev": "bun --watch run index.ts",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "start": "bun run index.ts"
   },
   "dependencies": {
@@ -16,6 +20,11 @@
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "@typescript-eslint/parser": "6.21.0",
+    "eslint": "8.57.0",
+    "eslint-config-prettier": "9.1.0",
+    "prettier": "3.3.3",
     "typescript": "^5.7.2"
   }
 }

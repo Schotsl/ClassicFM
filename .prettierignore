@@ -1,5 +1,12 @@
 # Dependencies
 node_modules
 
+# Lockfiles
+bun.lock
+
+# Git
+.git
+
 # Environment variables
+.env
 .env.local
