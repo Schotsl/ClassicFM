@@ -247,7 +247,7 @@ export const PlaybackServiceLive = Layer.effect(
 
         const current = yield* Ref.get(stateRef);
         if (current === "stopped") break;
-        if (current !== "buffering") {
+        if (current === "playing") {
           yield* Ref.set(stateRef, "buffering");
         }
 

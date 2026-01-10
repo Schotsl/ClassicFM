@@ -120,7 +120,7 @@ export const HealthServiceLive = Layer.effect(
           port,
           fetch: (req) => {
             const url = new URL(req.url);
-            if (url.pathname !== "/") {
+            if (url.pathname !== "/" && url.pathname !== "/health") {
               return new Response("Not Found", { status: 404 });
             }
 
@@ -143,8 +143,7 @@ export const HealthServiceLive = Layer.effect(
                           JSON.stringify(
                             {
                               status: "unhealthy",
-                              error:
-                                e instanceof Error ? e.message : String(e),
+                              error: e instanceof Error ? e.message : String(e),
                             },
                             null,
                             2
@@ -170,7 +169,7 @@ export const HealthServiceLive = Layer.effect(
           yield* Ref.set(monitorRef, fiber);
         }
 
-        yield* Effect.log(`Health: http://localhost:${port}/`);
+        yield* Effect.log(`Health: http://localhost:${port}/health`);
       });
 
     const stop = () =>

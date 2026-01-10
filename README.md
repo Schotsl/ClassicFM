@@ -1,6 +1,6 @@
 # Classic FM Buffer Player
 
-Streams Classic FM with a 1-hour buffer for WiFi dropout protection. Uses Effect for functional programming.
+This repo contains a Bun application that plays ClassicFM with a one-hour buffer to ensure continuous music even when Wi-Fi is spotty. It was made especially for my grandma!
 
 ## Requirements
 
@@ -23,7 +23,12 @@ curl http://localhost:3002/health
 ```json
 {
   "status": "healthy",
-  "buffer": { "sizeMB": 55.2, "targetMB": 56.25, "percentage": 98, "minutes": 57 },
+  "buffer": {
+    "sizeMB": 55.2,
+    "targetMB": 56.25,
+    "percentage": 98,
+    "minutes": 57
+  },
   "playback": "playing",
   "nextRebuild": "2026-01-11T03:00:00.000Z"
 }
@@ -31,17 +36,21 @@ curl http://localhost:3002/health
 
 ## Config (env vars)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `STREAM_URL` | classic.nl stream | MP3 stream URL |
-| `BUFFER_DURATION` | 1 hour | Buffer size |
-| `INITIAL_BUFFER_MINUTES` | 1 | Initial buffer before playback starts |
-| `HEALTH_PORT` | 3002 | Health endpoint port |
-| `REBUILD_HOUR` | 4 | Hour to rebuild buffer (0-23) |
+`STREAM_URL` lives in `.env`. Use `.env.local` to override it locally.
+
+| Variable                 | Default | Description                           |
+| ------------------------ | ------- | ------------------------------------- |
+| `STREAM_URL`             | .env    | MP3 stream URL                        |
+| `BUFFER_DURATION`        | 1 hour  | Buffer size                           |
+| `INITIAL_BUFFER_MINUTES` | 1       | Initial buffer before playback starts |
+| `HEALTH_PORT`            | 3002    | Health endpoint port                  |
+| `REBUILD_HOUR`           | 4       | Hour to rebuild buffer (0-23)         |
+| `BITRATE_KBPS`           | 24      | Expected bitrate in KB/s              |
 
 ## How it works
 
-1. Streams MP3 from Classic FM into a 1-hour circular buffer
-2. Pipes buffered audio to `ffplay` for playback
-3. If WiFi drops, continues playing from buffer
-4. At 4 AM daily, pauses to rebuild fresh buffer
+1. Connects to the MP3 stream and continuously appends bytes to a circular buffer sized by `BUFFER_DURATION`
+2. Waits for `INITIAL_BUFFER_MINUTES`, then feeds ~100ms chunks to `ffplay`
+3. If the buffer runs low, playback pauses until it refills; if the player exits, it is restarted
+4. At `REBUILD_HOUR`, playback pauses, the buffer clears, refills to target, then resumes
+5. A health endpoint reports buffer and playback state
