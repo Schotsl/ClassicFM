@@ -55,13 +55,13 @@ const handleShutdown = (exitCode = 0) => {
     .finally(() => runtime.dispose().finally(() => process.exit(shutdownExitCode)));
 };
 
-const exitWithError = (error: unknown, tags: { component: string; event: string }) => {
+const reportFatal = (error: unknown, tags: { component: string; event: string }) => {
   captureExceptionSync(error, { tags });
-  process.exit(1);
+  handleShutdown(1);
 };
 
 const handleFatal = (error: unknown, event: "uncaughtException" | "unhandledRejection") => {
-  exitWithError(error, { component: "process", event });
+  reportFatal(error, { component: "process", event });
 };
 
 process.on("SIGINT", () => handleShutdown(0));
@@ -71,5 +71,5 @@ process.on("unhandledRejection", (reason) => handleFatal(reason, "unhandledRejec
 
 runtime.runPromise(programWithLogs).catch((e) => {
   console.error("Fatal:", e);
-  exitWithError(e, { component: "runtime", event: "fatal" });
+  reportFatal(e, { component: "runtime", event: "fatal" });
 });
