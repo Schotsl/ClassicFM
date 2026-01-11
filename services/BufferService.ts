@@ -57,18 +57,21 @@ export const BufferServiceLive = Layer.effect(
         chunks.push(chunk);
         totalSize += chunk.length;
 
-        // Trim if over target size by advancing the head.
+        // Trim if over target size by removing only the excess from the head.
         if (totalSize > targetSize) {
-          while (totalSize > targetSize && headIndex < chunks.length - 1) {
-            totalSize -= chunks[headIndex]!.length;
-            chunks[headIndex] = emptyChunk;
-            headIndex += 1;
-          }
-
-          if (totalSize > targetSize && headIndex === chunks.length - 1) {
-            const excess = totalSize - targetSize;
-            chunks[headIndex] = chunks[headIndex]!.slice(excess);
-            totalSize = targetSize;
+          let excess = totalSize - targetSize;
+          while (excess > 0 && headIndex < chunks.length) {
+            const head = chunks[headIndex]!;
+            if (head.length <= excess) {
+              excess -= head.length;
+              totalSize -= head.length;
+              chunks[headIndex] = emptyChunk;
+              headIndex += 1;
+              continue;
+            }
+            chunks[headIndex] = head.slice(excess);
+            totalSize -= excess;
+            excess = 0;
           }
         }
 
