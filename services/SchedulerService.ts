@@ -22,6 +22,7 @@ export const SchedulerServiceLive = Layer.effect(
     const rebuildHour = yield* AppConfig.RebuildHour;
 
     const fiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
+    const rebuildFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
     const rebuildLockRef = yield* Ref.make(false);
 
     const performRebuild = Effect.gen(function* () {
@@ -34,17 +35,25 @@ export const SchedulerServiceLive = Layer.effect(
       yield* Effect.log("Buffer rebuild complete");
     });
 
-    const rebuildNow = () =>
-      Ref.modify(rebuildLockRef, (locked) => (locked ? [false, locked] : [true, true])).pipe(
-        Effect.flatMap((acquired) =>
-          acquired
-            ? performRebuild.pipe(
-                Effect.ensuring(Ref.set(rebuildLockRef, false)),
-                Effect.as(true),
-              )
-            : Effect.succeed(false),
+    const rebuildNow = () => {
+      const runRebuild = performRebuild.pipe(
+        Effect.ensuring(Ref.set(rebuildLockRef, false)),
+        Effect.ensuring(Ref.set(rebuildFiberRef, null)),
+      );
+
+      return Effect.uninterruptible(
+        Ref.modify(rebuildLockRef, (locked) => (locked ? [false, locked] : [true, true])).pipe(
+          Effect.flatMap((acquired) =>
+            acquired
+              ? Effect.forkDaemon(runRebuild).pipe(
+                  Effect.tap((fiber) => Ref.set(rebuildFiberRef, fiber)),
+                  Effect.as(true),
+                )
+              : Effect.succeed(false),
+          ),
         ),
       );
+    };
 
     const loop = Effect.gen(function* () {
       while (true) {
@@ -63,10 +72,21 @@ export const SchedulerServiceLive = Layer.effect(
       });
 
     const stop = () =>
-      Ref.get(fiberRef).pipe(
-        Effect.flatMap((f) => (f ? Fiber.interrupt(f) : Effect.void)),
-        Effect.tap(() => Ref.set(fiberRef, null)),
-      );
+      Effect.gen(function* () {
+        const loopFiber = yield* Ref.get(fiberRef);
+        if (loopFiber) {
+          yield* Fiber.interrupt(loopFiber);
+          yield* Ref.set(fiberRef, null);
+        }
+
+        const rebuildFiber = yield* Ref.get(rebuildFiberRef);
+        if (rebuildFiber) {
+          yield* Fiber.interrupt(rebuildFiber);
+          yield* Ref.set(rebuildFiberRef, null);
+        }
+
+        yield* Ref.set(rebuildLockRef, false);
+      });
 
     const getNextRebuildTime = () => nextHourInfo(rebuildHour).pipe(Effect.map((info) => info.at));
 

@@ -31,6 +31,11 @@ export const HealthServiceLive = Layer.effect(
       state: string,
       nextRebuild: Date,
     ) {
+      if (state === "paused") {
+        yield* Ref.set(thresholdRef, { armed: false });
+        return;
+      }
+
       const action = yield* Ref.modify(thresholdRef, (threshold) => {
         if (health.percentage >= 80) {
           if (!threshold.armed) {
