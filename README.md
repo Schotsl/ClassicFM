@@ -34,6 +34,20 @@ curl http://localhost/
 }
 ```
 
+## Manual Buffer Rebuild
+
+```bash
+curl -X POST http://localhost:3000/rebuild
+```
+
+```json
+{
+  "status": "started"
+}
+```
+
+Returns `202` when the rebuild starts, or `409` if one is already running.
+
 ## Config (env vars)
 
 Copy `.env.example` to `.env` and set `STREAM_URL`.

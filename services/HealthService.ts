@@ -111,6 +111,57 @@ export const HealthServiceLive = Layer.effect(
           port,
           fetch: (req) => {
             const url = new URL(req.url);
+            if (url.pathname === "/rebuild") {
+              if (req.method !== "POST") {
+                return new Response("Method Not Allowed", { status: 405 });
+              }
+
+              return Effect.runPromise(
+                scheduler.rebuildNow().pipe(
+                  Effect.map(
+                    (started) =>
+                      new Response(
+                        JSON.stringify(
+                          { status: started ? "started" : "already_running" },
+                          null,
+                          2,
+                        ),
+                        {
+                          headers: { "Content-Type": "application/json" },
+                          status: started ? 202 : 409,
+                        },
+                      ),
+                  ),
+                  Effect.catchAllCause((cause) => {
+                    const error = Cause.squash(cause);
+                    const message = error instanceof Error ? error.message : Cause.pretty(cause);
+                    return captureException(error, {
+                      tags: { component: "health", event: "handler_error" },
+                    }).pipe(
+                      Effect.zipRight(
+                        Effect.succeed(
+                          new Response(
+                            JSON.stringify(
+                              {
+                                status: "error",
+                                error: message,
+                              },
+                              null,
+                              2,
+                            ),
+                            {
+                              headers: { "Content-Type": "application/json" },
+                              status: 503,
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              );
+            }
+
             if (url.pathname !== "/" && url.pathname !== "/health") {
               return new Response("Not Found", { status: 404 });
             }
