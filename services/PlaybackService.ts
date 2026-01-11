@@ -90,7 +90,8 @@ export const PlaybackServiceLive = Layer.effect(
       yield* buffer.waitForMinutes(initialBufferMinutes);
       yield* Effect.log("Buffer ready");
 
-      const bytesPerChunk = Math.floor((bitrateKBps * 1024) / 10); // 100ms chunks
+      const chunkDurationMs = 100;
+      const bytesPerChunk = Math.floor((bitrateKBps * 1024 * chunkDurationMs) / 1000); // 100ms chunks
       const writeChunk = (player: PlayerProcess, chunk: Uint8Array) =>
         Effect.gen(function* () {
           if (!player.stdin) {
@@ -108,6 +109,7 @@ export const PlaybackServiceLive = Layer.effect(
 
       const runLoop = (player: PlayerProcess) =>
         Effect.gen(function* () {
+          let nextWriteAt: number | null = null;
           while (true) {
             const state = yield* Ref.get(stateRef);
 
@@ -127,6 +129,7 @@ export const PlaybackServiceLive = Layer.effect(
             }
 
             if (state === "paused") {
+              nextWriteAt = null;
               yield* Effect.sleep(Duration.millis(100));
               continue;
             }
@@ -144,6 +147,7 @@ export const PlaybackServiceLive = Layer.effect(
                   data: { bufSize, bytesPerChunk },
                 });
               }
+              nextWriteAt = null;
               yield* Effect.sleep(Duration.millis(500));
               continue;
             }
@@ -156,6 +160,11 @@ export const PlaybackServiceLive = Layer.effect(
                 message: "Playback resumed",
                 level: "info",
               });
+              nextWriteAt = performance.now();
+            }
+
+            if (nextWriteAt === null) {
+              nextWriteAt = performance.now();
             }
 
             const chunk = yield* buffer.consume(bytesPerChunk);
@@ -176,7 +185,12 @@ export const PlaybackServiceLive = Layer.effect(
               if (!wrote) return "restart" as PlaybackRunResult;
             }
 
-            yield* Effect.sleep(Duration.millis(100));
+            const now = performance.now();
+            nextWriteAt = Math.max(nextWriteAt + chunkDurationMs, now);
+            const sleepMs = nextWriteAt - now;
+            if (sleepMs > 0) {
+              yield* Effect.sleep(Duration.millis(sleepMs));
+            }
           }
         });
 
