@@ -1,7 +1,6 @@
-import { Context, Effect, Layer, Duration, Fiber, Ref, Stream, Option } from "effect";
+import { Context, Effect, Layer, Duration, Fiber, Ref } from "effect";
 import { BufferService } from "./BufferService";
 import { PlaybackService } from "./PlaybackService";
-import { StreamService } from "./StreamService";
 import { AppConfig } from "../config";
 import { nextHourInfo } from "../utils";
 
@@ -20,7 +19,6 @@ export const SchedulerServiceLive = Layer.effect(
   Effect.gen(function* () {
     const buffer = yield* BufferService;
     const playback = yield* PlaybackService;
-    const stream = yield* StreamService;
     const rebuildHour = yield* AppConfig.RebuildHour;
     const refillTimeout = Duration.minutes(5);
 
@@ -28,42 +26,8 @@ export const SchedulerServiceLive = Layer.effect(
     const rebuildFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
     const rebuildLockRef = yield* Ref.make(false);
 
-    const ensureStreamAvailable = Effect.gen(function* () {
-      const chunk = yield* stream
-        .connect()
-        .pipe(
-          Effect.flatMap((s) =>
-            Stream.take(s, 1).pipe(
-              Stream.runHead,
-              Effect.flatMap((maybe) =>
-                Option.isSome(maybe)
-                  ? Effect.succeed(maybe.value)
-                  : Effect.fail(new Error("Stream produced no data during availability check")),
-              ),
-            ),
-          ),
-          Effect.timeoutFail(
-            () => new Error("Stream availability check timed out"),
-            Duration.seconds(10),
-          ),
-        );
-
-      return chunk;
-    });
-
     const performRebuild = Effect.gen(function* () {
       yield* Effect.log(`Rebuilding buffer at ${rebuildHour}:00`);
-
-      const streamReady = yield* ensureStreamAvailable.pipe(
-        Effect.as(true),
-        Effect.catchAll((error) =>
-          Effect.log(
-            `Rebuild skipped: stream unavailable (${error instanceof Error ? error.message : error})`,
-          ).pipe(Effect.as(false)),
-        ),
-      );
-
-      if (!streamReady) return;
 
       yield* playback.pause();
       yield* buffer.clear();
