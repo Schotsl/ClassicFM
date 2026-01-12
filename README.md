@@ -56,6 +56,7 @@ Copy `.env.example` to `.env` and set `STREAM_URL`.
 | ------------------------ | ------- | ------------------------------------- |
 | `STREAM_URL`             | —       | MP3 stream URL                        |
 | `BUFFER_DURATION`        | 1 hour  | Buffer size                           |
+| `BUFFER_TEMP_DIR`        | system temp dir | Temp directory for buffer file |
 | `INITIAL_BUFFER_MINUTES` | 1       | Initial buffer before playback starts |
 | `HEALTH_PORT`            | 3000    | Health endpoint port                  |
 | `REBUILD_HOUR`           | 4       | Hour to rebuild buffer (0-23)         |
@@ -63,7 +64,7 @@ Copy `.env.example` to `.env` and set `STREAM_URL`.
 
 ## How it works
 
-1. Connects to the MP3 stream and continuously appends bytes to a circular buffer sized by `BUFFER_DURATION`
+1. Connects to the MP3 stream and continuously appends bytes to a disk-backed circular buffer sized by `BUFFER_DURATION`
 2. Waits for `INITIAL_BUFFER_MINUTES`, then feeds ~100ms chunks to `ffplay`
 3. If the buffer runs low, playback pauses until it refills; if the player exits, it is restarted
 4. At `REBUILD_HOUR`, playback pauses, the buffer clears, refills to target, then resumes
