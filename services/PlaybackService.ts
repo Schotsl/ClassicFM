@@ -210,7 +210,7 @@ export const PlaybackServiceLive = Layer.effect(
 
         const runResult = yield* Effect.try({
           try: () =>
-            Bun.spawn(["ffplay", "-nodisp", "-autoexit", "-i", "-"], {
+            Bun.spawn(["ffplay", "-nodisp", "-autoexit", "-af", "volume=1.3", "-i", "-"], {
               stdin: "pipe",
               stdout: "ignore",
               stderr: "ignore",
