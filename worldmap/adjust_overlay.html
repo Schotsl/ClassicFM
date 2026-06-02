@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>World Map Overlay Adjuster</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #111;
+      color: #eee;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      background: #111;
+    }
+
+    main {
+      min-width: 0;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    canvas {
+      max-width: 100%;
+      max-height: calc(100vh - 32px);
+      background: #000;
+      box-shadow: 0 18px 60px rgb(0 0 0 / 55%);
+      cursor: grab;
+      image-rendering: auto;
+    }
+
+    canvas:active {
+      cursor: grabbing;
+    }
+
+    aside {
+      border-left: 1px solid #333;
+      background: #181818;
+      padding: 16px;
+      overflow: auto;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      margin: 0 0 14px;
+      font-size: 12px;
+      color: #bbb;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    input[type="number"],
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #3b3b3b;
+      border-radius: 6px;
+      background: #0f0f0f;
+      color: #eee;
+      font: inherit;
+    }
+
+    input[type="number"] {
+      padding: 8px;
+    }
+
+    textarea {
+      min-height: 160px;
+      padding: 10px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    button {
+      border: 1px solid #424242;
+      border-radius: 6px;
+      background: #252525;
+      color: #eee;
+      padding: 9px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #303030;
+    }
+
+    .hint {
+      color: #999;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-left: 0;
+        border-top: 1px solid #333;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <canvas id="map" width="2048" height="1054"></canvas>
+  </main>
+
+  <aside>
+    <h1>Overlay Transform</h1>
+
+    <label>
+      X offset
+      <div class="row">
+        <input id="xRange" type="range" min="-300" max="300" step="1">
+        <input id="xInput" type="number" step="1">
+      </div>
+    </label>
+
+    <label>
+      Y offset
+      <div class="row">
+        <input id="yRange" type="range" min="-300" max="300" step="1">
+        <input id="yInput" type="number" step="1">
+      </div>
+    </label>
+
+    <label>
+      Scale
+      <div class="row">
+        <input id="scaleRange" type="range" min="1.6" max="2.4" step="0.001">
+        <input id="scaleInput" type="number" step="0.001">
+      </div>
+    </label>
+
+    <label>
+      Opacity
+      <div class="row">
+        <input id="opacityRange" type="range" min="0" max="1" step="0.01">
+        <input id="opacityInput" type="number" min="0" max="1" step="0.01">
+      </div>
+    </label>
+
+    <div class="actions">
+      <button id="copy">Copy Params</button>
+      <button id="reset">Reset</button>
+      <button id="download">Download PNG</button>
+      <button id="hash">Update URL</button>
+    </div>
+
+    <label>
+      Current params
+      <textarea id="params" spellcheck="false"></textarea>
+    </label>
+
+    <p class="hint">
+      Drag the overlay on the map. Use the mouse wheel over the map to scale around the cursor.
+      Arrow keys nudge by 1 px, Shift+Arrow by 10 px, and +/- adjusts scale.
+    </p>
+  </aside>
+
+  <script>
+    const canvas = document.getElementById("map");
+    const ctx = canvas.getContext("2d");
+    const target = new Image();
+    const overlay = new Image();
+
+    const controls = {
+      x: [document.getElementById("xRange"), document.getElementById("xInput")],
+      y: [document.getElementById("yRange"), document.getElementById("yInput")],
+      scale: [document.getElementById("scaleRange"), document.getElementById("scaleInput")],
+      opacity: [document.getElementById("opacityRange"), document.getElementById("opacityInput")],
+    };
+
+    const defaultState = {
+      x: 0,
+      y: -73,
+      scale: 2,
+      opacity: 1,
+    };
+
+    const state = readHashParams() || { ...defaultState };
+    let dragging = false;
+    let previousPointer = null;
+    const cacheBust = Date.now();
+
+    target.src = "target.png";
+    overlay.src = `country_outlines_1024x600.png?v=${cacheBust}`;
+
+    function readHashParams() {
+      if (!location.hash.startsWith("#params=")) {
+        return null;
+      }
+
+      try {
+        const params = new URLSearchParams(location.hash.slice(8));
+        return {
+          x: Number(params.get("x")),
+          y: Number(params.get("y")),
+          scale: Number(params.get("scale")),
+          opacity: Number(params.get("opacity")),
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function syncControls() {
+      for (const [key, inputs] of Object.entries(controls)) {
+        for (const input of inputs) {
+          input.value = key === "scale" ? state[key].toFixed(3) : String(state[key]);
+        }
+      }
+
+      document.getElementById("params").value = JSON.stringify({
+        overlay: "country_outlines_1024x600.png",
+        target: "target.png",
+        x: Math.round(state.x * 1000) / 1000,
+        y: Math.round(state.y * 1000) / 1000,
+        scale: Math.round(state.scale * 100000) / 100000,
+        opacity: Math.round(state.opacity * 1000) / 1000,
+        targetWidth: canvas.width,
+        targetHeight: canvas.height,
+      }, null, 2);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+      ctx.drawImage(target, 0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = clamp(state.opacity, 0, 1);
+      ctx.drawImage(
+        overlay,
+        state.x,
+        state.y,
+        overlay.naturalWidth * state.scale,
+        overlay.naturalHeight * state.scale
+      );
+      ctx.globalAlpha = 1;
+      syncControls();
+    }
+
+    function update(key, value) {
+      state[key] = Number(value);
+      if (key === "opacity") {
+        state.opacity = clamp(state.opacity, 0, 1);
+      }
+      draw();
+    }
+
+    function pointerPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height),
+      };
+    }
+
+    for (const [key, inputs] of Object.entries(controls)) {
+      for (const input of inputs) {
+        input.addEventListener("input", () => update(key, input.value));
+      }
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      previousPointer = pointerPosition(event);
+      canvas.setPointerCapture(event.pointerId);
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!dragging) {
+        return;
+      }
+
+      const currentPointer = pointerPosition(event);
+      state.x += currentPointer.x - previousPointer.x;
+      state.y += currentPointer.y - previousPointer.y;
+      previousPointer = currentPointer;
+      draw();
+    });
+
+    canvas.addEventListener("pointerup", () => {
+      dragging = false;
+      previousPointer = null;
+    });
+
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const pointer = pointerPosition(event);
+      const previousScale = state.scale;
+      const scaleDelta = Math.exp(-event.deltaY * 0.001);
+      state.scale = clamp(state.scale * scaleDelta, 1.6, 2.4);
+      state.x = pointer.x - (pointer.x - state.x) * (state.scale / previousScale);
+      state.y = pointer.y - (pointer.y - state.y) * (state.scale / previousScale);
+      draw();
+    }, { passive: false });
+
+    window.addEventListener("keydown", (event) => {
+      const step = event.shiftKey ? 10 : 1;
+
+      if (event.key === "ArrowLeft") {
+        state.x -= step;
+      } else if (event.key === "ArrowRight") {
+        state.x += step;
+      } else if (event.key === "ArrowUp") {
+        state.y -= step;
+      } else if (event.key === "ArrowDown") {
+        state.y += step;
+      } else if (event.key === "+" || event.key === "=") {
+        state.scale = clamp(state.scale + 0.005, 1.6, 2.4);
+      } else if (event.key === "-" || event.key === "_") {
+        state.scale = clamp(state.scale - 0.005, 1.6, 2.4);
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      draw();
+    });
+
+    document.getElementById("copy").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(document.getElementById("params").value);
+    });
+
+    document.getElementById("reset").addEventListener("click", () => {
+      Object.assign(state, defaultState);
+      draw();
+    });
+
+    document.getElementById("download").addEventListener("click", () => {
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = "adjusted_overlay_preview.png";
+      link.click();
+    });
+
+    document.getElementById("hash").addEventListener("click", () => {
+      const params = new URLSearchParams({
+        x: String(Math.round(state.x * 1000) / 1000),
+        y: String(Math.round(state.y * 1000) / 1000),
+        scale: String(Math.round(state.scale * 100000) / 100000),
+        opacity: String(Math.round(state.opacity * 1000) / 1000),
+      });
+      location.hash = `params=${params}`;
+    });
+
+    Promise.all([
+      new Promise((resolve) => target.addEventListener("load", resolve)),
+      new Promise((resolve) => overlay.addEventListener("load", resolve)),
+    ]).then(draw);
+  </script>
+</body>
+</html>

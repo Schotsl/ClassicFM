@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worldmap Suprise</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="control-page">
+  <main class="suprise-shell">
+    <section class="suprise-panel">
+      <label class="remote-toggle">
+        <input id="toggle" type="checkbox">
+        <span class="remote-toggle-track">
+          <span class="remote-toggle-knob"></span>
+        </span>
+        <span id="toggleText">Off</span>
+      </label>
+
+      <p id="status" class="suprise-status">Display blank</p>
+
+      <nav class="suprise-links">
+        <a href="/">Countries</a>
+        <a href="/calibrate">Calibrate</a>
+      </nav>
+    </section>
+  </main>
+
+  <script type="module">
+    import { loadJson } from "/static/map.js";
+
+    const toggle = document.getElementById("toggle");
+    const toggleText = document.getElementById("toggleText");
+    const status = document.getElementById("status");
+
+    function syncCopy(checked, message) {
+      toggle.checked = checked;
+      toggleText.textContent = checked ? "On" : "Off";
+      status.textContent = message;
+    }
+
+    async function blankDisplay() {
+      const response = await fetch("/api/display-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "blank" }),
+      });
+      syncCopy(false, response.ok ? "Display blank" : "Could not blank display");
+    }
+
+    async function startSuprise() {
+      const response = await fetch("/api/surprise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      syncCopy(true, response.ok ? "Reveal running" : "Could not start reveal");
+    }
+
+    async function toggleChanged() {
+      if (toggle.checked) {
+        await startSuprise();
+      } else {
+        await blankDisplay();
+      }
+    }
+
+    async function init() {
+      const state = await loadJson("/api/state");
+      const isBlank = state.displayEffect?.mode === "blank";
+      syncCopy(!isBlank, isBlank ? "Display blank" : "Ready");
+      toggle.addEventListener("change", toggleChanged);
+    }
+
+    init().catch((error) => {
+      console.error(error);
+      syncCopy(false, "Load failed");
+    });
+  </script>
+</body>
+</html>

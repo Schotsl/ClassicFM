@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worldmap Control</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="control-page">
+  <main class="country-shell">
+    <section class="country-panel">
+      <input id="search" class="search" type="search" placeholder="Search countries" autocomplete="off">
+
+      <div class="list-meta">
+        <span id="selectedCount">0 selected</span>
+        <span id="status" class="status"></span>
+      </div>
+
+      <div id="countryList" class="country-list"></div>
+
+      <div class="control-actions">
+        <button id="selectNone">Clear</button>
+        <button id="save" class="primary">Save</button>
+        <button id="calibrate">Calibrate</button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { loadJson } from "/static/map.js";
+
+    const countryList = document.getElementById("countryList");
+    const search = document.getElementById("search");
+    const status = document.getElementById("status");
+    const selectedCount = document.getElementById("selectedCount");
+
+    let countryData;
+    let selectedIds = new Set();
+
+    function setStatus(message) {
+      status.textContent = message;
+      if (message) {
+        window.setTimeout(() => {
+          if (status.textContent === message) {
+            status.textContent = "";
+          }
+        }, 1800);
+      }
+    }
+
+    function selectedPayload() {
+      return { countries: Array.from(selectedIds).sort() };
+    }
+
+    function updateSelectedCount() {
+      const count = selectedIds.size;
+      selectedCount.textContent = count === 1 ? "1 selected" : `${count} selected`;
+    }
+
+    async function saveSelected() {
+      const response = await fetch("/api/selected-countries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(selectedPayload()),
+      });
+
+      if (!response.ok) {
+        setStatus("Save failed");
+        return;
+      }
+
+      setStatus("Saved");
+    }
+
+    function renderCountryList() {
+      const query = search.value.trim().toLowerCase();
+      countryList.innerHTML = "";
+
+      for (const country of countryData.countries) {
+        if (query && !country.name.toLowerCase().includes(query)) {
+          continue;
+        }
+
+        const label = document.createElement("label");
+        label.className = "country-option";
+        if (selectedIds.has(country.id)) {
+          label.classList.add("is-selected");
+        }
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = selectedIds.has(country.id);
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            selectedIds.add(country.id);
+          } else {
+            selectedIds.delete(country.id);
+          }
+          label.classList.toggle("is-selected", checkbox.checked);
+          updateSelectedCount();
+          saveSelected();
+        });
+
+        const name = document.createElement("span");
+        name.textContent = country.name;
+
+        label.append(checkbox, name);
+        countryList.append(label);
+      }
+
+      updateSelectedCount();
+    }
+
+    async function init() {
+      countryData = await loadJson("/static/countries.json");
+      const state = await loadJson("/api/state");
+      selectedIds = new Set(state.selectedCountries.countries || []);
+
+      renderCountryList();
+      search.addEventListener("input", renderCountryList);
+
+      document.getElementById("selectNone").addEventListener("click", () => {
+        selectedIds.clear();
+        renderCountryList();
+        saveSelected();
+      });
+
+      document.getElementById("save").addEventListener("click", saveSelected);
+      document.getElementById("calibrate").addEventListener("click", () => {
+        window.location.href = "/calibrate";
+      });
+    }
+
+    init().catch((error) => {
+      console.error(error);
+      setStatus("Load failed");
+    });
+  </script>
+</body>
+</html>

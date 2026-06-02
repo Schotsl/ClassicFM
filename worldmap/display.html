@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worldmap Display</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="display-page">
+  <canvas id="displayMap"></canvas>
+
+  <script type="module">
+    import { drawCountries, loadJson, normalizeCalibration } from "/static/map.js";
+
+    const canvas = document.getElementById("displayMap");
+    const surpriseDuration = 18000;
+    const surpriseFrameDelay = 160;
+    const surpriseFadeInDuration = 1800;
+    const surpriseSettleDuration = 2200;
+    const modeTransitionDuration = 1600;
+
+    let countryData;
+    let calibration;
+    let selectedIds = new Set();
+    let currentSurpriseRunId = 0;
+    let surpriseTimer = null;
+    let surpriseStartedAt = 0;
+    let surpriseActive = false;
+    let transitionFrame = null;
+    let renderedIds = new Set();
+    let renderedAlpha = 0;
+    let hasLoadedState = false;
+    let displayMode = "normal";
+
+    function allCountryIds() {
+      return countryData.countries.map((country) => country.id);
+    }
+
+    function easeInOut(progress) {
+      return progress * progress * (3 - 2 * progress);
+    }
+
+    function easeOut(progress) {
+      return 1 - Math.pow(1 - progress, 3);
+    }
+
+    function idsForMode(mode) {
+      if (mode === "blank") {
+        return new Set();
+      }
+
+      return new Set(selectedIds);
+    }
+
+    function drawIds(ids, alpha) {
+      const visibleAlpha = Math.max(0, Math.min(1, alpha));
+      drawCountries(canvas, countryData, {
+        calibration: {
+          ...calibration,
+          opacity: calibration.opacity * visibleAlpha,
+        },
+        selectedIds: ids,
+        fill: calibration.fill,
+      });
+      renderedIds = new Set(ids);
+      renderedAlpha = visibleAlpha;
+    }
+
+    function drawBlend(fromIds, fromAlpha, toIds, toAlpha) {
+      drawCountries(canvas, countryData, {
+        calibration: {
+          ...calibration,
+          opacity: calibration.opacity * Math.max(0, Math.min(1, fromAlpha)),
+        },
+        selectedIds: fromIds,
+        fill: calibration.fill,
+      });
+      drawCountries(canvas, countryData, {
+        calibration: {
+          ...calibration,
+          opacity: calibration.opacity * Math.max(0, Math.min(1, toAlpha)),
+        },
+        selectedIds: toIds,
+        fill: calibration.fill,
+        clear: false,
+      });
+      renderedIds = new Set(toIds);
+      renderedAlpha = Math.max(0, Math.min(1, toAlpha));
+    }
+
+    function stopTransition() {
+      if (transitionFrame !== null) {
+        window.cancelAnimationFrame(transitionFrame);
+        transitionFrame = null;
+      }
+    }
+
+    function stopSurprise() {
+      if (surpriseTimer !== null) {
+        window.clearInterval(surpriseTimer);
+        surpriseTimer = null;
+      }
+      surpriseActive = false;
+    }
+
+    function transitionToIds(toIds, duration) {
+      stopTransition();
+
+      const fromIds = new Set(renderedIds);
+      const fromAlpha = renderedAlpha;
+      const targetIds = new Set(toIds);
+      const startedAt = performance.now();
+
+      function renderTransition() {
+        const elapsed = performance.now() - startedAt;
+        const progress = Math.min(1, elapsed / duration);
+        const eased = easeInOut(progress);
+
+        drawBlend(fromIds, fromAlpha * (1 - eased), targetIds, eased);
+
+        if (progress >= 1) {
+          transitionFrame = null;
+          drawIds(targetIds, targetIds.size === 0 ? 0 : 1);
+          return;
+        }
+
+        transitionFrame = window.requestAnimationFrame(renderTransition);
+      }
+
+      renderTransition();
+    }
+
+    function renderSelected() {
+      drawIds(selectedIds, 1);
+    }
+
+    function renderBlank() {
+      drawIds([], 0);
+    }
+
+    function renderCurrentMode() {
+      if (displayMode === "blank") {
+        renderBlank();
+        return;
+      }
+
+      renderSelected();
+    }
+
+    function renderSurpriseFrame() {
+      const elapsed = performance.now() - surpriseStartedAt;
+      const progress = Math.min(1, elapsed / surpriseDuration);
+
+      if (progress >= 1) {
+        stopSurprise();
+        displayMode = "normal";
+        transitionToIds(selectedIds, surpriseSettleDuration);
+        return;
+      }
+
+      const frameIds = new Set(selectedIds);
+      const probability = 0.48 * Math.pow(1 - progress, 2.15);
+      const alpha = easeOut(Math.min(1, elapsed / surpriseFadeInDuration));
+
+      for (const id of allCountryIds()) {
+        if (!selectedIds.has(id) && Math.random() < probability) {
+          frameIds.add(id);
+        }
+      }
+
+      drawIds(frameIds, alpha);
+    }
+
+    function startSurprise() {
+      stopTransition();
+      stopSurprise();
+      surpriseStartedAt = performance.now();
+      surpriseActive = true;
+      renderSurpriseFrame();
+      surpriseTimer = window.setInterval(renderSurpriseFrame, surpriseFrameDelay);
+    }
+
+    async function refreshState() {
+      const state = await loadJson("/api/state");
+      calibration = normalizeCalibration(state.calibration, countryData);
+      selectedIds = new Set(state.selectedCountries.countries || []);
+      const nextDisplayMode = state.displayEffect?.mode === "blank" ? "blank" : "normal";
+
+      const surpriseRunId = Number(state.displayEffect?.surpriseRunId || 0);
+      if (!hasLoadedState) {
+        displayMode = nextDisplayMode;
+        currentSurpriseRunId = surpriseRunId;
+        hasLoadedState = true;
+        renderCurrentMode();
+        return;
+      }
+
+      if (surpriseRunId !== currentSurpriseRunId) {
+        currentSurpriseRunId = surpriseRunId;
+        displayMode = nextDisplayMode;
+        if (surpriseRunId > 0) {
+          startSurprise();
+          return;
+        }
+      }
+
+      if (nextDisplayMode !== displayMode) {
+        displayMode = nextDisplayMode;
+        stopSurprise();
+        transitionToIds(idsForMode(displayMode), modeTransitionDuration);
+        return;
+      }
+
+      displayMode = nextDisplayMode;
+
+      if (!surpriseActive && transitionFrame === null) {
+        renderCurrentMode();
+      }
+    }
+
+    async function init() {
+      countryData = await loadJson("/static/countries.json");
+      await refreshState();
+      window.setInterval(refreshState, 300);
+      window.addEventListener("resize", () => {
+        if (!surpriseActive && transitionFrame === null) {
+          renderCurrentMode();
+        }
+      });
+    }
+
+    init().catch((error) => console.error(error));
+  </script>
+</body>
+</html>

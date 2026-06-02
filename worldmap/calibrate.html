@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worldmap Calibration</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="calibrate-page">
+  <main class="calibrate-stage">
+    <canvas id="calibrateMap"></canvas>
+  </main>
+
+  <aside class="calibrate-panel">
+    <h1>Calibration</h1>
+
+    <label class="field">
+      X offset
+      <div class="field-row">
+        <input id="xRange" type="range" min="-400" max="400" step="1">
+        <input id="xInput" type="number" step="1">
+      </div>
+    </label>
+
+    <label class="field">
+      Y offset
+      <div class="field-row">
+        <input id="yRange" type="range" min="-400" max="400" step="1">
+        <input id="yInput" type="number" step="1">
+      </div>
+    </label>
+
+    <label class="field">
+      Horizontal scale
+      <div class="field-row">
+        <input id="scaleXRange" type="range" min="0.6" max="1.8" step="0.001">
+        <input id="scaleXInput" type="number" step="0.001">
+      </div>
+    </label>
+
+    <label class="field">
+      Vertical scale
+      <div class="field-row">
+        <input id="scaleYRange" type="range" min="0.6" max="1.8" step="0.001">
+        <input id="scaleYInput" type="number" step="0.001">
+      </div>
+    </label>
+
+    <label class="field">
+      Rotation
+      <div class="field-row">
+        <input id="rotationRange" type="range" min="-360" max="360" step="0.05">
+        <input id="rotationInput" type="number" min="-360" max="360" step="0.05">
+      </div>
+    </label>
+
+    <label class="field">
+      Brightness
+      <div class="field-row">
+        <input id="opacityRange" type="range" min="0" max="1" step="0.01">
+        <input id="opacityInput" type="number" min="0" max="1" step="0.01">
+      </div>
+    </label>
+
+    <label class="field">
+      Country color
+      <input id="fillInput" class="color-picker" type="color">
+    </label>
+
+    <label class="field">
+      Background
+      <input id="backgroundInput" class="color-picker" type="color">
+    </label>
+
+    <div class="actions">
+      <button id="randomize">Randomize</button>
+      <button id="reset">Reset</button>
+      <button id="save" class="primary">Save</button>
+      <button id="control">Control</button>
+    </div>
+
+    <p id="status" class="status"></p>
+    <p class="hint">
+      Drag the map to move it. Use the mouse wheel to scale around the pointer.
+      Arrow keys nudge by 1 px, Shift+Arrow by 10 px, +/- adjusts both scales, and [/] rotates.
+    </p>
+  </aside>
+
+  <script type="module">
+    import { drawCountries, loadJson, normalizeCalibration, renderLoop } from "/static/map.js";
+
+    const canvas = document.getElementById("calibrateMap");
+    const status = document.getElementById("status");
+    const controls = {
+      x: [document.getElementById("xRange"), document.getElementById("xInput")],
+      y: [document.getElementById("yRange"), document.getElementById("yInput")],
+      scaleX: [document.getElementById("scaleXRange"), document.getElementById("scaleXInput")],
+      scaleY: [document.getElementById("scaleYRange"), document.getElementById("scaleYInput")],
+      rotation: [document.getElementById("rotationRange"), document.getElementById("rotationInput")],
+      opacity: [document.getElementById("opacityRange"), document.getElementById("opacityInput")],
+      fill: [document.getElementById("fillInput")],
+      background: [document.getElementById("backgroundInput")],
+    };
+
+    let countryData;
+    let calibration;
+    let calibrationIds = new Set();
+    let requestRender = () => {};
+    let dragging = false;
+    let previousPointer = null;
+
+    function setStatus(message) {
+      status.textContent = message;
+      if (message) {
+        window.setTimeout(() => {
+          if (status.textContent === message) {
+            status.textContent = "";
+          }
+        }, 1800);
+      }
+    }
+
+    function randomizeCalibrationCountries() {
+      calibrationIds = new Set(
+        countryData.countries
+          .filter(() => Math.random() < 0.5)
+          .map((country) => country.id)
+      );
+      requestRender();
+    }
+
+    function formatCalibrationValue(key) {
+      if (key === "fill") {
+        return calibration.fill;
+      }
+      if (key === "background") {
+        return calibration.background;
+      }
+      if (key === "scaleX" || key === "scaleY") {
+        return calibration[key].toFixed(3);
+      }
+      if (key === "rotation") {
+        return calibration[key].toFixed(2);
+      }
+      return String(calibration[key]);
+    }
+
+    function normalizeColor(value, fallback) {
+      if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+        return value.toLowerCase();
+      }
+
+      return fallback;
+    }
+
+    function syncControls() {
+      for (const [key, inputs] of Object.entries(controls)) {
+        for (const input of inputs) {
+          input.value = formatCalibrationValue(key);
+        }
+      }
+    }
+
+    function update(key, value) {
+      if (key === "fill") {
+        calibration.fill = normalizeColor(value, calibration.fill);
+      } else if (key === "background") {
+        calibration.background = normalizeColor(value, calibration.background);
+      } else {
+        calibration[key] = Number(value);
+      }
+      syncControls();
+      requestRender();
+    }
+
+    function pointerPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height),
+      };
+    }
+
+    async function saveCalibration() {
+      const response = await fetch("/api/calibration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(calibration),
+      });
+
+      setStatus(response.ok ? "Saved" : "Save failed");
+    }
+
+    async function init() {
+      countryData = await loadJson("/static/countries.json");
+      const state = await loadJson("/api/state");
+      calibration = normalizeCalibration(state.calibration, countryData);
+      randomizeCalibrationCountries();
+      syncControls();
+
+      requestRender = renderLoop(canvas, countryData, () => ({
+        calibration,
+        selectedIds: calibrationIds,
+        fill: calibration.fill,
+      }));
+
+      for (const [key, inputs] of Object.entries(controls)) {
+        for (const input of inputs) {
+          input.addEventListener("input", () => update(key, input.value));
+        }
+      }
+
+      canvas.addEventListener("pointerdown", (event) => {
+        dragging = true;
+        previousPointer = pointerPosition(event);
+        canvas.setPointerCapture(event.pointerId);
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (!dragging) {
+          return;
+        }
+
+        const currentPointer = pointerPosition(event);
+        calibration.x += currentPointer.x - previousPointer.x;
+        calibration.y += currentPointer.y - previousPointer.y;
+        previousPointer = currentPointer;
+        syncControls();
+        requestRender();
+      });
+
+      canvas.addEventListener("pointerup", () => {
+        dragging = false;
+        previousPointer = null;
+      });
+
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const pointer = pointerPosition(event);
+        const previousScaleX = calibration.scaleX;
+        const previousScaleY = calibration.scaleY;
+        const scaleDelta = Math.exp(-event.deltaY * 0.001);
+        calibration.scaleX = Math.max(0.6, Math.min(1.8, calibration.scaleX * scaleDelta));
+        calibration.scaleY = Math.max(0.6, Math.min(1.8, calibration.scaleY * scaleDelta));
+        calibration.x = pointer.x - (pointer.x - calibration.x) * (calibration.scaleX / previousScaleX);
+        calibration.y = pointer.y - (pointer.y - calibration.y) * (calibration.scaleY / previousScaleY);
+        syncControls();
+        requestRender();
+      }, { passive: false });
+
+      window.addEventListener("keydown", (event) => {
+        const step = event.shiftKey ? 10 : 1;
+
+        if (event.key === "ArrowLeft") {
+          calibration.x -= step;
+        } else if (event.key === "ArrowRight") {
+          calibration.x += step;
+        } else if (event.key === "ArrowUp") {
+          calibration.y -= step;
+        } else if (event.key === "ArrowDown") {
+          calibration.y += step;
+        } else if (event.key === "+" || event.key === "=") {
+          calibration.scaleX = Math.min(1.8, calibration.scaleX + 0.005);
+          calibration.scaleY = Math.min(1.8, calibration.scaleY + 0.005);
+        } else if (event.key === "-" || event.key === "_") {
+          calibration.scaleX = Math.max(0.6, calibration.scaleX - 0.005);
+          calibration.scaleY = Math.max(0.6, calibration.scaleY - 0.005);
+        } else if (event.key === "[" || event.key === "{") {
+          calibration.rotation = Math.max(-360, calibration.rotation - (event.shiftKey ? 1 : 0.1));
+        } else if (event.key === "]" || event.key === "}") {
+          calibration.rotation = Math.min(360, calibration.rotation + (event.shiftKey ? 1 : 0.1));
+        } else {
+          return;
+        }
+
+        event.preventDefault();
+        syncControls();
+        requestRender();
+      });
+
+      document.getElementById("randomize").addEventListener("click", randomizeCalibrationCountries);
+      document.getElementById("reset").addEventListener("click", () => {
+        calibration = normalizeCalibration({}, countryData);
+        syncControls();
+        requestRender();
+      });
+      document.getElementById("save").addEventListener("click", saveCalibration);
+      document.getElementById("control").addEventListener("click", () => {
+        window.location.href = "/";
+      });
+    }
+
+    init().catch((error) => {
+      console.error(error);
+      setStatus("Load failed");
+    });
+  </script>
+</body>
+</html>
